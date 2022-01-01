@@ -1,12 +1,12 @@
 import './style.css';
 import * as THREE from 'three';
-import { v4 as uuidv4 } from 'uuid';
+import { getRandomInt } from './utils/math';
 import p5 from 'p5';
-const { createVector } = p5.prototype;
+const { createVector, noise } = p5.prototype;
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import Perlin from './Perlin';
 
-// import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const app = document.querySelector('#app');
 
@@ -16,23 +16,43 @@ const perlin = new Perlin();
  * Scene
  */
 const color = 'rgb(106,193,222)'; // white
-const near = 10;
-const far = 100;
+const near = 1000;
+const far = 10000;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(color);
-// scene.fog = new THREE.Fog(color, near, far);
+scene.fog = new THREE.Fog(color, near, far);
 
-// const gltfLoader = new GLTFLoader();
-// let model = null;
-// let tree = new THREE.Object3D();
-// const trees = [];
+const gltfLoader = new GLTFLoader();
+let model = null;
+let tree = new THREE.Object3D();
+const trees = [];
 
-// gltfLoader.load('/models/palmtree.gltf', (gltf) => {
-//   model = { ...gltf };
-//   let mesh = model.scene.children[0];
-//   tree.add(mesh);
-//   generateTrees();
-// });
+gltfLoader.load(
+  '/models/test.gltf',
+  (gltf) => {
+    model = { ...gltf };
+    let mesh = model.scene.children[2];
+    console.log(mesh);
+    tree.add(mesh);
+    setup();
+  },
+  (xhr) => {
+    const percentLoaded = (xhr.loaded / xhr.total) * 100;
+    console.log(percentLoaded + '% loaded');
+  },
+  (error) => {
+    console.log('An error happened');
+  }
+);
+
+function addTree(x, y, z) {
+  let newTree = new THREE.Object3D();
+  newTree.add(tree.clone());
+  newTree.scale.set(10, 10, 10);
+  newTree.position.set(x, y, z);
+  trees.push(newTree);
+  scene.add(newTree);
+}
 
 /*
  * Camera
@@ -50,18 +70,13 @@ controls.target.set(0, 0, 0);
 controls.enableDamping = true;
 
 /*
- * Mesh
- */
-// const cube = new THREE.Mesh(geometry, material);
-
-/*
  *  Lights
  */
 const light = new THREE.DirectionalLight(0xffffff, 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 
-const floorGeom = new THREE.PlaneGeometry(2200, 2200, 256, 256);
+const floorGeom = new THREE.PlaneGeometry(2000, 2000, 256, 256);
 floorGeom.dynamic = true;
 
 const floorMaterial = new THREE.MeshStandardMaterial({
@@ -75,8 +90,6 @@ const floor = new THREE.Mesh(floorGeom, floorMaterial);
 function randomTerrain() {
   const vertices = floor.geometry.attributes.position.array;
   let count = floor.geometry.attributes.position.count;
-
-  // console.log(count);
 
   const colors = [];
   const color = new THREE.Color('rgb(59,64,123)');
@@ -92,28 +105,42 @@ function randomTerrain() {
     new THREE.Float32BufferAttribute(colors, 3)
   );
 
-  let peak = 200;
-  let smoothing = 200;
+  const floorPositionAttribute = floor.geometry.getAttribute('position');
+  let peak = 100;
+  let smoothing = 300;
 
+  let counter = 0;
   for (let i = 0; i <= vertices.length; i += 3) {
+    counter++;
+    const objVertex = new THREE.Vector3();
+    objVertex.fromBufferAttribute(floorPositionAttribute, counter);
+
     const level =
       peak *
         perlin.noise(vertices[i] / smoothing, vertices[i + 1] / smoothing) || 0;
     vertices[i + 2] = level;
+
     if (level < -60) {
+      // white snow caps
       colors[i] = 220 / 255; // red
       colors[i + 1] = 242 / 255; // green
       colors[i + 2] = 255 / 255; // blue
     }
-    if (level > 30) {
-      colors[i] = 255 / 255; // red
+    if (level > 60) {
+      // water color
+      colors[i] = 0 / 255; // red
+      colors[i + 1] = 60 / 255; // green
+      colors[i + 2] = 255 / 255; // blue
+      // console.log(i * 0.01);
+    } else if (level > 30) {
+      // ground 'sand' or 'grass' color
+      colors[i] = 0 / 255; // red
       colors[i + 1] = 189 / 255; // green
       colors[i + 2] = 89 / 255; // blue
-    }
-    if (level > 60) {
-      colors[i] = 48 / 255; // red
-      colors[i + 1] = 189 / 255; // green
-      colors[i + 2] = 255 / 255; // blue
+
+      if (level > 42 && level < 48) {
+        addTree(objVertex.x, objVertex.z - level, objVertex.y);
+      }
     }
   }
 
@@ -127,6 +154,8 @@ function randomTerrain() {
   floor.geometry.computeVertexNormals();
 
   scene.add(floor);
+
+  // console.log(scene);
 }
 
 /*
@@ -134,9 +163,9 @@ function randomTerrain() {
  */
 function setup() {
   // camera
-  camera.position.z = 1200;
-  camera.position.y = 600;
-  camera.rotation.x = -0.7;
+  camera.position.z = 600;
+  camera.position.y = 300;
+  camera.rotation.x = -0.6;
 
   controls.update();
   scene.add(light);
@@ -153,8 +182,9 @@ function setup() {
 
   randomTerrain();
 
-  renderer.render(scene, camera);
-  // initKeyControls();
+  // renderer.render(scene, camera);
+
+  draw();
 }
 
 /*
@@ -163,9 +193,5 @@ function setup() {
 function draw() {
   // randomTerrain();
   renderer.render(scene, camera);
-
   requestAnimationFrame(draw);
 }
-
-setup();
-draw();
